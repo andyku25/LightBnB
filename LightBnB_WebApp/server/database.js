@@ -98,10 +98,72 @@ exports.getAllReservations = getAllReservations;
  * @return {Promise<[{}]>}  A promise to the properties.
  */
 const getAllProperties = function(options, limit = 10) {
-  const queryString = `
-  SELECT * FROM properties LIMIT $1;
+  console.log(limit);
+  const queryParams = [];
+
+  const filterStitch = (paramsArr) => {
+    if (paramsArr.length > 1) {
+      return `AND `;
+    }
+    return `WHERE `;
+  }
+
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) AS average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += filterStitch(queryParams);
+    queryString += `city LIKE $${queryParams.length} `;
+  }
+
+  if (options.owner_id) {
+    queryParams.push(`${options.owner_id}`);
+    queryString += filterStitch(queryParams);
+    queryString += `properties.owner_id = $${queryParams.length}`
+  }
+
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night}`);
+    queryString += filterStitch(queryParams);
+    queryString += `
+    cost_per_night >= $${queryParams.length}
+    `;
+  }
+
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night}`)
+    queryString += filterStitch(queryParams);
+    queryString += `
+    cost_per_night <= $${queryParams.length}
+    `;
+  }
+
+  
+  queryString += `
+  GROUP BY properties.id 
   `;
-  return pool.query(queryString,[limit])
+
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+    queryString += `
+    HAVING avg(property_reviews.rating) >= $${queryParams.length} 
+    `;
+  }
+  
+  console.log(limit);
+
+  queryParams.push(limit);
+  
+  queryString += `
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+  console.log(queryString, queryParams);
+
+  return pool.query(queryString, queryParams)
   .then(res => res.rows)
   .catch(err => console.error("query error ", err));
 }
